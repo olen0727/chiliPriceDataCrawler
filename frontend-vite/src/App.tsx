@@ -526,7 +526,7 @@ const App = () => {
         </section>
 
         {/* 圖表 */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 gap-8">
 
           {/* 價格走勢圖 */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl shadow-black/20 relative group">
@@ -544,7 +544,7 @@ const App = () => {
                 </button>
               )}
             </div>
-            <div className="h-[300px] w-full relative select-none">
+            <div className="h-[240px] w-full relative select-none">
               <div className="absolute bottom-2 right-2 text-xs text-slate-500 pointer-events-none z-10">
                 (元/公斤)
               </div>
@@ -607,7 +607,7 @@ const App = () => {
                 交易量分析 (Volume Analysis)
               </h3>
             </div>
-            <div className="h-[300px] w-full relative">
+            <div className="h-[240px] w-full relative">
               <div className="absolute bottom-2 right-2 text-xs text-slate-500 pointer-events-none z-10">
                 (公斤)
               </div>
