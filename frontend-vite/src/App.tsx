@@ -181,10 +181,7 @@ const App = () => {
     const fetchData = async () => {
       try {
         const response = await fetch('/data/vegetables_fv.csv');
-        const reader = response.body?.getReader();
-        const result = await reader?.read();
-        const decoder = new TextDecoder('utf-8');
-        const csv = decoder.decode(result?.value);
+        const csv = await response.text();
 
         Papa.parse(csv, {
           header: true,
