@@ -364,13 +364,24 @@ const App = () => {
 
   }, [data, selectedMarket, selectedProduct, selectedVarieties, timeScale, varieties.length]);
 
-  // 計算顯示的數據 (考慮縮放)
+  // 計算顯示的數據 (考慮縮放與預設區間)
   const displayedData = useMemo(() => {
+    // 1. 如果有縮放，優先使用縮放區間
     if (zoomLeftIndex !== null && zoomRightIndex !== null && chartData.length > 0) {
       return chartData.slice(zoomLeftIndex, zoomRightIndex + 1);
     }
+
+    // 2. 如果是日檢視且沒有縮放，預設顯示最後 30 筆資料 (假設資料已按日期排序)
+    if (timeScale === 'day' && chartData.length > 0) {
+      // chartData 是升序排列 (舊 -> 新)
+      // 我們想要最後 30 天，所以取最後 30 筆
+      const last30 = chartData.slice(-30);
+      return last30;
+    }
+
+    // 3. 其他情況 (月檢視或資料不足) 顯示全部
     return chartData;
-  }, [chartData, zoomLeftIndex, zoomRightIndex]);
+  }, [chartData, zoomLeftIndex, zoomRightIndex, timeScale]);
 
   const zoom = () => {
     if (refAreaLeft === refAreaRight || refAreaRight === '') {
