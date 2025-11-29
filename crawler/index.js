@@ -36,20 +36,51 @@ function getRocDate(date) {
     return `${year}/${month}/${day}`;
 }
 
+
+
 // Helper to delay
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 async function main() {
     // Initialize CSV with headers if not exists
     const headers = ['Date', 'Market', 'Code', 'Name', 'Variety', 'High', 'Mid', 'Low', 'Avg', 'Volume'];
-    if (!fs.existsSync(OUTPUT_FILE)) {
-        fs.writeFileSync(OUTPUT_FILE, stringify([headers]));
+
+    // Store all data in a Map: Date -> Array of CSV Lines
+    const dataMap = new Map();
+
+    // 1. Read existing data
+    if (fs.existsSync(OUTPUT_FILE)) {
+        const content = fs.readFileSync(OUTPUT_FILE, 'utf-8');
+        const lines = content.split('\n').filter(l => l.trim().length > 0);
+
+        // Skip header (index 0)
+        for (let i = 1; i < lines.length; i++) {
+            const line = lines[i].trim();
+            // Extract date (first column)
+            // Assuming format: "113/11/29",...
+            const firstComma = line.indexOf(',');
+            if (firstComma > -1) {
+                const date = line.substring(0, firstComma).replace(/['"]/g, ''); // Remove quotes if any
+                if (!dataMap.has(date)) {
+                    dataMap.set(date, []);
+                }
+                dataMap.get(date).push(line);
+            }
+        }
     }
+    console.log(`Loaded ${dataMap.size} days of data.`);
+
+    // 2. Crawl Data
+    // Start from Today and look back
+    let currentDate = new Date();
+    // Look back 14 days to cover any recent gaps
+    const lookbackDate = new Date();
+    lookbackDate.setDate(lookbackDate.getDate() - 14);
 
     // Create Axios instance with cookie jar support (basic)
     let cookies = '';
 
-    // Initial GET
+    // Initial GET to setup session
     console.log("Fetching initial page...");
     let response;
     try {
@@ -75,12 +106,8 @@ async function main() {
 
     // Detect Markets
     let marketOptions = [];
-    // The select ID is usually ctl00$ContentPlaceHolder1$DDL_Market but in cheerio we can select by name or id
-    // The ID in DOM is DDL_Market (based on previous inspection)
-    // Wait, the ID might be namespaced. Let's try finding select by name ending in DDL_Market
     let marketSelect = $('select[name$="DDL_Market"]');
     if (marketSelect.length === 0) {
-        // Try ID
         marketSelect = $('#ctl00_ContentPlaceHolder1_DDL_Market');
     }
 
@@ -103,17 +130,17 @@ async function main() {
     }
     console.log("Target Markets:", marketOptions);
 
-    // Date Loop
-    // Start from where we left off (2024-11-26) to avoid duplicates if possible, 
-    // or just overwrite if we were smart, but here we append.
-    // Assuming the file ends at 2024-11-27.
-    let currentDate = new Date('2024-11-26');
+    let hasNewData = false;
 
-    // Limit to 2022-01-01
-    const endDate = new Date('2022-01-01');
-
-    while (currentDate >= endDate) {
+    while (currentDate >= lookbackDate) {
         const rocDate = getRocDate(currentDate);
+
+        if (dataMap.has(rocDate)) {
+            console.log(`Skipping ${rocDate} (already exists)`);
+            currentDate.setDate(currentDate.getDate() - 1);
+            continue;
+        }
+
         console.log(`Processing ${rocDate}...`);
 
         for (const market of marketOptions) {
@@ -142,7 +169,6 @@ async function main() {
 
                 // Update state
                 if (res.headers['set-cookie']) {
-                    // Simple cookie merge/replace
                     const newCookies = res.headers['set-cookie'].map(c => c.split(';')[0]).join('; ');
                     cookies = newCookies;
                 }
@@ -154,12 +180,8 @@ async function main() {
 
                 // Parse Table
                 const rows = [];
-                // Look for the main data table
-                // It usually has class 'table_style1' or similar.
-                // Let's iterate all rows and check column count.
                 $('table tr').each((i, row) => {
                     const cols = $(row).find('td').map((j, col) => $(col).text().trim()).get();
-                    // We expect at least: Code, Name, Variety, High, Mid, Low, Avg, Volume (8 cols)
                     if (cols.length >= 8) {
                         const code = cols[0];
                         if (code.startsWith('FV')) {
@@ -181,8 +203,19 @@ async function main() {
 
                 if (rows.length > 0) {
                     console.log(`  Market ${market.txt}: Found ${rows.length} FV records`);
-                    const csvData = stringify(rows);
-                    fs.appendFileSync(OUTPUT_FILE, csvData);
+                    const csvString = stringify(rows).trim(); // stringify adds trailing newline usually
+
+                    if (!dataMap.has(rocDate)) {
+                        dataMap.set(rocDate, []);
+                    }
+                    // Split by newline in case multiple rows returned
+                    const newLines = csvString.split('\n');
+                    for (const nl of newLines) {
+                        if (nl.trim()) {
+                            dataMap.get(rocDate).push(nl.trim());
+                        }
+                    }
+                    hasNewData = true;
                 }
 
             } catch (err) {
@@ -192,6 +225,24 @@ async function main() {
 
         currentDate.setDate(currentDate.getDate() - 1);
     }
+
+    // 3. Sort and Write
+    // Convert Map keys to array and sort descending
+    const sortedDates = Array.from(dataMap.keys()).sort().reverse();
+
+    console.log("Writing sorted data to file...");
+    const fd = fs.openSync(OUTPUT_FILE, 'w');
+    // Write Header
+    fs.writeSync(fd, stringify([headers])); // stringify adds newline
+
+    for (const date of sortedDates) {
+        const lines = dataMap.get(date);
+        for (const line of lines) {
+            fs.writeSync(fd, line + '\n');
+        }
+    }
+    fs.closeSync(fd);
+
     console.log(`Done. Data saved to ${OUTPUT_FILE}`);
 }
 
